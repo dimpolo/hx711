@@ -26,7 +26,7 @@ pub const MAX_VALUE: i32 = (1 << 23) - 1;
 /// Minimum ADC value
 pub const MIN_VALUE: i32 = 1 << 23;
 
-/// When PD_SCK pin changes from low to high and stays at high for logner than 60 us, HX711 enters power down mode. When PD_SCK returns low, the chip will reset and enter normal operation mode.
+/// When PD_SCK pin changes from low to high and stays at high for longer than 60 us, HX711 enters power down mode. When PD_SCK returns low, the chip will reset and enter normal operation mode.
 #[allow(dead_code)]
 const TIME_TO_SLEEP: u32 = 70;
 
@@ -83,7 +83,7 @@ where
     IN: InputPin<Error = EIN>,
     OUT: OutputPin<Error = EOUT>,
 {
-    /// Creates a new driver from Input and Outut pins
+    /// Creates a new driver from Input and Output pins
     pub fn new(delay: D, dout: IN, mut pd_sck: OUT) -> Result<Self, Error<EIN, EOUT>> {
         pd_sck.set_low().map_err(Error::Output)?;
         let mut hx711 = Hx711 {
@@ -114,16 +114,20 @@ where
     }
 
     /// Wake the chip up and set mode.
-    pub fn enable(&mut self) -> Result<(), Error<EIN, EOUT>> {
+    pub fn enable(&mut self) -> nb::Result<(), Error<EIN, EOUT>> {
         self.pd_sck.set_low().map_err(Error::Output)?;
         self.delay.delay_us(TIME_SCK_LOW);
-        nb::block! {self.set_mode(self.mode)}
+        self.set_mode(self.mode)
     }
 
     /// Reset the chip.
     pub fn reset(&mut self) -> Result<(), Error<EIN, EOUT>> {
         self.disable()?;
-        self.enable()
+        // TODO need delay here?
+        match self.enable() {
+            Ok(_) | Err(nb::Error::WouldBlock) => Ok(()),
+            Err(nb::Error::Other(e)) => Err(e),
+        }
     }
 
     /// Retrieve the latest conversion value if available
